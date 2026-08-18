@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+.npmrc
+.almost/
+*.pem
+*-token
+*.key
+
+# Backups written by `almost init`
+*.almost-backup
+
+# Local tooling
+.DS_Store
+*.log
+npm-debug.log*
+
+# Packed tarballs
+*.tgz

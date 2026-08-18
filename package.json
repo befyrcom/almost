@@ -1,0 +1,46 @@
+{
+  "name": "almost-sh",
+  "version": "0.1.0",
+  "description": "The signal layer for coding agents. Desktop and team notifications for Claude Code, Codex, Gemini CLI and Cursor.",
+  "license": "MIT",
+  "author": "befyr",
+  "homepage": "https://almost.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/befyrcom/almost.git"
+  },
+  "bugs": {
+    "url": "https://github.com/befyrcom/almost/issues"
+  },
+  "main": "bin/almost.js",
+  "bin": {
+    "almost": "./bin/almost.js",
+    "almost-sh": "./bin/almost.js",
+    "almost-setup": "./bin/setup.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "claude",
+    "hooks",
+    "notifications",
+    "desktop-notifications",
+    "ai-agents",
+    "slack",
+    "cli"
+  ],
+  "scripts": {
+    "setup": "node ./bin/setup.js"
+  },
+  "dependencies": {
+    "node-notifier": "^10.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
