@@ -1,6 +1,6 @@
 {
   "name": "almost-sh",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The signal layer for coding agents. Desktop and team notifications for Claude Code, Codex, Gemini CLI and Cursor.",
   "license": "MIT",
   "author": "befyr",
