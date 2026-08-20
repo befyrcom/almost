@@ -3,9 +3,9 @@
 The signal layer for coding agents.
 
 Your agent runs long tasks in a terminal you already switched away from.
-`almost` hooks into its lifecycle and tells you the moment a run finishes, needs
-a person, or goes quiet: a native desktop banner and sound locally, and
-optionally a message to your team.
+`almost` hooks into its lifecycle and tells you the moment a run finishes or
+needs a person: a native desktop banner and sound locally, and optionally a
+message to your team.
 
 MIT licensed. The CLI is the whole product for one developer, and it works with
 no account, no key and no network.
@@ -31,9 +31,11 @@ hooks up on clone.
 | `almost connect <key>` | Point this project at a team, then install |
 | `almost status` | Show what is configured |
 | `almost preview [event]` | Print exactly what would be sent, send nothing |
+| `almost start` | Report that a run has begun |
 | `almost stop` | Report that a run finished |
 | `almost notification` | Report that a run needs a person |
 | `almost idle` | Report that a run has gone quiet |
+| `almost done` | Report that the work passed its real gate |
 
 Event data may be piped in as JSON on stdin:
 
@@ -43,10 +45,27 @@ echo '{"message":"needs permission to push"}' | almost notification
 
 ## What it hooks
 
-| Claude Code event | Fires when | You get |
+| Claude Code event | Fires when | The card |
 | --- | --- | --- |
-| `Notification` | Claude is waiting on input or permission | "Attention needed" and the reason |
-| `Stop` | Claude finishes its turn | "Agent finished" |
+| `SessionStart` | A session begins | opens in **Running** |
+| `Notification` | The agent is waiting on input or permission | moves to **Blocked** |
+| `Stop` | The agent finishes its turn | moves to **Almost** |
+
+Those three are the whole list, and they are why a board fills itself.
+
+`SessionStart` matches `startup` and `clear`, not `compact`. Compaction
+continues the same session, and a card is keyed to its session — firing `start`
+there would pull a card that had already reached Almost back into Running while
+nothing had actually resumed.
+
+Nothing hooks **Done**, on purpose. An agent stopping is not the work being
+finished, so the last column belongs to whatever actually checks it: call
+`almost done` from CI, a merge hook or a review bot.
+
+`almost idle` is a command rather than a hook for a duller reason: there is no
+watchdog in the CLI, so nothing detects a run that has gone quiet on its own.
+Run it from your own timer if you want that signal, and until you do, no idle
+event is ever sent.
 
 The desktop banner fires before anything touches the network, and network
 delivery is capped at 4 seconds. An unreachable or slow endpoint can never fail
@@ -67,6 +86,12 @@ almost never WHAT it was.
 - The default mode sends metadata only. The reason for a notification is turned
   into a category locally (`permission required`, `waiting for input`), so the
   agent's own words stay on your machine.
+- A card is named after the current **branch**, because otherwise every card on
+  the board reads `claude run` — no agent's hook payload carries a task name, so
+  there is nothing else to call it. A branch is already written down in the
+  checkout and is nowhere near the transcript, but it is not nothing: a branch
+  called `fix-acme-billing` names a customer. It answers to the same switch the
+  repository name does, so `sendRepo: false` withholds both.
 - Nothing is sent anywhere unless you connect a team or configure a webhook.
 
 Verify it rather than taking our word for it. `almost preview` renders the exact
@@ -77,7 +102,8 @@ echo '{"message":"can I force push?","transcript_path":"/tmp/x.jsonl"}' \
   | almost preview notification
 ```
 
-Set `ALMOST_PRIVACY=full` to include the task name and the agent's own message.
+Set `ALMOST_PRIVACY=full` to include the agent's own message, and to let a task
+name piped in on stdin take the place of the branch.
 
 ## Configuration
 
@@ -106,8 +132,8 @@ from us:
    `{"text": "..."}`. Slack, Discord via `/slack`, or something you wrote.
 2. **The hosted board at [almost.sh](https://almost.sh).** Run
    `almost connect <key>` and runs from the whole team land on one board, with
-   per-channel routing, history and policy. That service is paid and closed
-   source. See the split below.
+   history, and every channel the team has added gets the event. That service
+   is paid and closed source. See the split below.
 
 ## Open core
 
@@ -115,9 +141,16 @@ from us:
 | --- | --- |
 | The `almost` CLI | The event relay and its API |
 | Hook installers for every agent | The team board and run history |
-| Desktop banners and sound | Multi-user Slack, Discord and Teams routing |
-| The privacy filter and `almost preview` | Interactive approvals from chat and mobile |
-| Direct webhook delivery | Team policy, audit log and retention |
+| Desktop banners and sound | Slack, Discord and Telegram for the whole team |
+| The privacy filter and `almost preview` | Invites, roles and per-project channel routing |
+| Direct webhook delivery | Approvals from chat, audit log and SSO *(in build)* |
+
+Rows marked *in build* are not built yet, and the pricing page says the same.
+
+A project reaches every channel the team has until you tell it otherwise, so
+nothing needs configuring to start. Its Settings tab is where that changes:
+every channel, only the ones you pick, or nowhere at all and the board is the
+only record.
 
 The CLI never needs the hosted service. The hosted service is worth paying for
 once more than one person needs to see the same run.

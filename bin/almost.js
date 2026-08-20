@@ -5,7 +5,7 @@ const notifier = require('node-notifier');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 const { settings, write, ensureIgnored, PROJECT_FILE } = require('../lib/config');
-const { installClaude, detectOthers } = require('../lib/install');
+const { installAgents } = require('../lib/install');
 const { buildEvent, NEVER_FORWARD } = require('../lib/privacy');
 
 const EVENTS = new Set(['stop', 'notification', 'idle', 'start', 'done']);
@@ -39,9 +39,15 @@ function usage() {
       '  almost status            Show what is configured',
       '  almost preview [event]   Print exactly what would be sent, send nothing',
       '',
+      '  almost start             Report that a run has begun',
       '  almost stop              Report that a run finished',
       '  almost notification      Report that a run needs a person',
       '  almost idle              Report that a run has gone quiet',
+      '  almost done              Report that the work passed its real gate',
+      '',
+      'init wires start, stop and notification. done is yours to call, from CI,',
+      'a merge hook or a review bot — a card only reaches Done when something',
+      'that actually checks the work says so.',
       '',
       'Event data may be piped in as JSON on stdin.',
       '',
@@ -52,20 +58,32 @@ function usage() {
 function runInit() {
   process.stdout.write(`Installing almost in ${process.cwd()}\n`);
 
-  const claude = installClaude();
-  if (!claude.ok) {
-    process.stderr.write(`  Claude Code: ${claude.error}\n`);
-    process.exitCode = 1;
-  } else if (claude.added === 0) {
-    process.stdout.write('  Claude Code: already installed (.claude/settings.json)\n');
-  } else {
-    process.stdout.write(
-      `  Claude Code: .claude/settings.json${claude.backedUp ? ' (backed up)' : ''}\n`,
-    );
-  }
+  // One line per agent, whichever kind it is. An agent that can be wired says
+  // what was written; one that cannot says what to write yourself, and only
+  // when it is actually present — a hint for an agent nobody here uses is
+  // noise on every install.
+  for (const result of installAgents()) {
+    const name = result.agent.label;
 
-  for (const agent of detectOthers()) {
-    process.stdout.write(`  ${agent.label}: detected, ${agent.hint}\n`);
+    if (!result.agent.hooks) {
+      if (result.detected) {
+        process.stdout.write(`  ${name}: detected, ${result.agent.hint}\n`);
+      }
+      continue;
+    }
+
+    if (!result.ok) {
+      process.stderr.write(`  ${name}: ${result.error}\n`);
+      process.exitCode = 1;
+      continue;
+    }
+
+    const where = path.relative(process.cwd(), result.file);
+    process.stdout.write(
+      result.added === 0
+        ? `  ${name}: already installed (${where})\n`
+        : `  ${name}: ${where}${result.backedUp ? ' (backed up)' : ''}\n`,
+    );
   }
 
   const cfg = settings();
@@ -110,7 +128,8 @@ function runPreview(kind) {
 
     process.stdout.write(
       [
-        `mode        ${cfg.privacy === 'full' ? 'full (task and message included)' : 'metadata (default)'}`,
+        `mode        ${cfg.privacy === 'full' ? "full (the agent's own words included)" : 'metadata (default)'}`,
+        `names       ${cfg.sendRepo === false ? 'no repo, no branch — cards take the agent name' : 'cards are named after the branch'}`,
         `destination ${cfg.ingestKey ? `${cfg.apiUrl}/api/events` : 'nowhere — not connected to a team'}`,
         `channels    ${cfg.slackWebhook ? 'one webhook configured' : 'none'}`,
         '',
@@ -220,6 +239,7 @@ function eventBody(cfg, kind, payload) {
     cfg,
     agent: payload.agent || detectAgent(),
     repo: repoName(),
+    branch: branchName(),
   });
 }
 
@@ -240,6 +260,34 @@ function postJson(url, body, extraHeaders) {
   }).catch(() => {
     /* A hook must never fail the terminal it runs in. */
   });
+}
+
+/**
+ * The current branch, which is what a card ends up called.
+ *
+ * Without this every card on the board is named "<agent> run", because nothing
+ * else supplies a name: `task` is only ever populated from JSON piped in on
+ * stdin, and no agent's hook payload carries one. A branch is usually the task
+ * — `axe/fix-retry-loop` — it is already written down in the repo, and it is
+ * nowhere near the transcript.
+ *
+ * `symbolic-ref` rather than `rev-parse --abbrev-ref`: on a detached HEAD the
+ * latter prints the literal string "HEAD", which would name a card "HEAD".
+ * This fails instead, and the card falls back to the agent's name.
+ */
+function branchName() {
+  try {
+    const name = execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 800,
+    })
+      .toString()
+      .trim();
+    return name || null;
+  } catch {
+    /* detached HEAD, not a repo, or no git */
+    return null;
+  }
 }
 
 /** Best effort: owner/repo from git, else the directory name. */
